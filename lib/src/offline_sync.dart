@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:encrypt/encrypt.dart' as encrypt;
@@ -18,32 +17,23 @@ class OfflineSync {
 
   late encrypt.Encrypter _encrypter;
   late encrypt.IV _iv;
+  late String _apiEndpoint;
+  late String _authToken;
 
-  // Method to set the parameter
-  void setEcrypter(encrypt.Encrypter encrypter, encrypt.IV iv) {
-    _encrypter = encrypter;
-    _iv = iv;
-  }
-
-  encrypt.Encrypter? get encrypter => _encrypter;
-  encrypt.IV? get iv => _iv;
-
-
-  Connectivity _connectivity = Connectivity();
   http.Client _httpClient = http.Client();
 
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  // final _encrypter = encrypt.Encrypter(encrypt.AES(encrypt.Key.fromLength(32)));
-  // final _iv = encrypt.IV.fromLength(16);
-  String? _authToken;
-
-  String _apiEndpoint = '';
 
   static const int _maxRetries = 3;
   static const int _batchSize = 50;
   static const int _currentSchemaVersion = 2;
 
-  Future<void> initialize() async {
+  Future<void> initialize(encrypt.Encrypter encrypter,encrypt.IV iv,String apiEndpoint,String authToken) async {
+
+    _encrypter = encrypter;
+    _iv = iv;
+    _apiEndpoint = apiEndpoint;
+    _authToken = authToken;
+
     _database = await openDatabase(
       join(await getDatabasesPath(), 'offline_sync.db'),
       onCreate: (db, version) async {
@@ -70,26 +60,8 @@ class OfflineSync {
 
     _sharedPreferences = await SharedPreferences.getInstance();
 
-    _connectivitySubscription =
-        _connectivity.onConnectivityChanged.listen(_handleConnectivityChange);
-  }
-
-  // Getter for the current API endpoint
-  String get apiEndpoint => _apiEndpoint;
-
-  Future<void> setAuthToken(String token) async {
-    _authToken = token;
     await _sharedPreferences.setString(
-        'auth_token', _encrypter.encrypt(token, iv: _iv).base64);
-  }
-
-  // Method to set custom API endpoint
-  void setApiEndpoint(String endpoint) {
-    if (endpoint.isNotEmpty) {
-      _apiEndpoint = endpoint;
-    } else {
-      throw ArgumentError('API endpoint cannot be empty');
-    }
+        'auth_token', _encrypter.encrypt(authToken, iv: _iv).base64);
   }
 
   Future<void> loadAuthToken() async {
@@ -110,19 +82,19 @@ class OfflineSync {
     });
   }
 
-  Future<void> _handleConnectivityChange(
-      List<ConnectivityResult> connectivityResult) async {
-    if (connectivityResult.any(
-      (result) => {
-        ConnectivityResult.mobile,
-        ConnectivityResult.wifi,
-        ConnectivityResult.ethernet,
-        ConnectivityResult.vpn
-      }.contains(result),
-    )) {
-      await syncData();
-    }
-  }
+  // Future<void> _handleConnectivityChange(
+  //     List<ConnectivityResult> connectivityResult) async {
+  //   if (connectivityResult.any(
+  //     (result) => {
+  //       ConnectivityResult.mobile,
+  //       ConnectivityResult.wifi,
+  //       ConnectivityResult.ethernet,
+  //       ConnectivityResult.vpn
+  //     }.contains(result),
+  //   )) {
+  //     await syncData();
+  //   }
+  // }
 
   @visibleForTesting
   Future<void> syncData() async {
@@ -244,58 +216,6 @@ class OfflineSync {
     return null;
   }
 
-  Future<void> updateFromServer() async {
-    if (_apiEndpoint.isEmpty) {
-      throw Exception('API endpoint not set');
-    }
-    final response = await _httpClient.get(
-      Uri.parse(_apiEndpoint),
-      headers: {
-        'Authorization': 'Bearer $_authToken',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final updates = json.decode(response.body);
-      await _applyServerUpdates(updates);
-    } else if (response.statusCode == 401) {
-      throw Exception('Authentication failed');
-    } else {
-      throw Exception('Failed to fetch updates from server');
-    }
-  }
-
-  Future<void> _applyServerUpdates(List<Map<String, dynamic>> updates) async {
-    for (final update in updates) {
-      final id = update['id'];
-      final serverData = update['data'];
-      final serverTimestamp = update['timestamp'];
-
-      final localData = await readLocalData(id);
-
-      if (localData == null ||
-          serverTimestamp > (localData['last_updated'] as int)) {
-        await saveLocalData(id, serverData);
-      } else {
-        // Local data is newer, resolve conflict
-        final resolvedData = await _resolveConflict(id, localData, serverData);
-        await saveLocalData(id, resolvedData);
-      }
-    }
-  }
-
-  Future<Map<String, dynamic>> _resolveConflict(String id,
-      Map<String, dynamic> localData, Map<String, dynamic> serverData) async {
-    // This merges data, preferring local changes
-    final resolvedData = Map<String, dynamic>.from(serverData);
-    localData.forEach((key, value) {
-      if (value != serverData[key]) {
-        resolvedData[key] = value;
-      }
-    });
-    return resolvedData;
-  }
-
   Future<List<Map<String, dynamic>>> readAllLocalData() async {
     final results = await _database.query('local_data');
     return results.map((row) {
@@ -310,7 +230,6 @@ class OfflineSync {
   }
 
   Future<void> dispose() async {
-    await _connectivitySubscription?.cancel();
     await _database.close();
   }
 
@@ -318,12 +237,10 @@ class OfflineSync {
   OfflineSync.withDependencies({
     required Database database,
     required http.Client httpClient,
-    required Connectivity connectivity,
     required SharedPreferences sharedPreferences,
   }) {
     _database = database;
     _httpClient = httpClient;
-    _connectivity = connectivity;
     _sharedPreferences = sharedPreferences;
   }
 
