@@ -16,12 +16,25 @@ class OfflineSync {
   late Database _database;
   late SharedPreferences _sharedPreferences;
 
+  late encrypt.Encrypter _encrypter;
+  late encrypt.IV _iv;
+
+  // Method to set the parameter
+  void setEcrypter(encrypt.Encrypter encrypter, encrypt.IV iv) {
+    _encrypter = encrypter;
+    _iv = iv;
+  }
+
+  encrypt.Encrypter? get encrypter => _encrypter;
+  encrypt.IV? get iv => _iv;
+
+
   Connectivity _connectivity = Connectivity();
   http.Client _httpClient = http.Client();
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  final _encrypter = encrypt.Encrypter(encrypt.AES(encrypt.Key.fromLength(32)));
-  final _iv = encrypt.IV.fromLength(16);
+  // final _encrypter = encrypt.Encrypter(encrypt.AES(encrypt.Key.fromLength(32)));
+  // final _iv = encrypt.IV.fromLength(16);
   String? _authToken;
 
   String _apiEndpoint = '';
