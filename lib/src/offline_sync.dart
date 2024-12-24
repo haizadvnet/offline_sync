@@ -114,7 +114,7 @@ class OfflineSync {
 
         //
         try {
-          final http.Response response = await _sendToServer('batch_sync', json.decode(decryptedData));
+          final http.Response response = await _sendToServer('batch_sync', json.decode(decryptedData)['data']);
 
           if(response.statusCode == 200){
             await _database.update(
