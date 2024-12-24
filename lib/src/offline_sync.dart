@@ -106,10 +106,42 @@ class OfflineSync {
     );
 
     if(unsynced.isNotEmpty){
-    for (int i = 0; i < unsynced.length; i += _batchSize) {
-      final batch = unsynced.skip(i).take(_batchSize).toList();
-      await _syncBatch(batch);
-    }
+
+      for (final item in unsynced) {
+        final List<Map<String, dynamic>> batchData = [];
+
+        final decryptedData =
+          _encrypter.decrypt64(item['data'] as String, iv: _iv);
+
+        batchData.add({
+          'id': item['id'],
+          'action': item['action'],
+          'data': json.decode(decryptedData),
+        });
+
+        //
+        try {
+          final http.Response response = await _sendToServer('batch_sync', {'batch': batchData});
+
+          if(response.statusCode == 200){
+            await _database.update(
+              'sync_queue',
+              {'synced': 1},
+              where: 'id = ?',
+              whereArgs: [item['id']],
+            );
+          }
+        }catch(e){
+          await _handleSyncError(int.parse(item['id'].toString()), 'Network error');
+        }
+
+
+      }
+
+    // for (int i = 0; i < unsynced.length; i += _batchSize) {
+    //   final batch = unsynced.skip(i).take(_batchSize).toList();
+    //   await _syncBatch(batch);
+    // }
     return true;
     }else{
       return false; 
@@ -117,40 +149,43 @@ class OfflineSync {
 
   }
 
-  Future<void> _syncBatch(List<Map<String, dynamic>> batch) async {
-    final List<Map<String, dynamic>> batchData = [];
-    for (final item in batch) {
-      final decryptedData =
-          _encrypter.decrypt64(item['data'] as String, iv: _iv);
-      batchData.add({
-        'id': item['id'],
-        'action': item['action'],
-        'data': json.decode(decryptedData),
-      });
-    }
+  // Future<void> _syncBatch(List<Map<String, dynamic>> batch) async {
+  //   final List<Map<String, dynamic>> batchData = [];
+  //   for (final item in batch) {
+  //     final decryptedData =
+  //         _encrypter.decrypt64(item['data'] as String, iv: _iv);
+  //     batchData.add({
+  //       'id': item['id'],
+  //       'action': item['action'],
+  //       'data': json.decode(decryptedData),
+  //     });
+  //   }
 
-    try {
-      final response = await _sendToServer('batch_sync', {'batch': batchData});
-      final serverResponse = json.decode(response.body);
+  //   try {
+  //     final http.Response response = await _sendToServer('batch_sync', {'batch': batchData});
+  //     final serverResponse = json.decode(response.body);
 
-      for (final result in serverResponse['results']) {
-        if (result['success']) {
-          await _database.update(
-            'sync_queue',
-            {'synced': 1},
-            where: 'id = ?',
-            whereArgs: [result['id']],
-          );
-        } else {
-          await _handleSyncError(result['id'], result['error']);
-        }
-      }
-    } catch (e) {
-      for (final item in batch) {
-        await _handleSyncError(item['id'], 'Network error');
-      }
-    }
-  }
+  //     if(response.statusCode == 200){
+
+  //     }
+  //     for (final result in serverResponse['results']) {
+  //       if (result['success']) {
+  //         await _database.update(
+  //           'sync_queue',
+  //           {'synced': 1},
+  //           where: 'id = ?',
+  //           whereArgs: [result['id']],
+  //         );
+  //       } else {
+  //         await _handleSyncError(result['id'], result['error']);
+  //       }
+  //     }
+  //   } catch (e) {
+  //     for (final item in batch) {
+  //       await _handleSyncError(item['id'], 'Network error');
+  //     }
+  //   }
+  // }
 
   Future<void> _handleSyncError(int id, String error) async {
     await _database.update(
