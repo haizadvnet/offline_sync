@@ -96,8 +96,7 @@ class OfflineSync {
   //   }
   // }
 
-  @visibleForTesting
-  Future<void> syncData() async {
+  Future<bool> syncData() async {
     final unsynced = await _database.query(
       'sync_queue',
       where: 'synced = ? AND retry_count < ?',
@@ -106,10 +105,16 @@ class OfflineSync {
       limit: _batchSize,
     );
 
+    if(unsynced.isNotEmpty){
     for (int i = 0; i < unsynced.length; i += _batchSize) {
       final batch = unsynced.skip(i).take(_batchSize).toList();
       await _syncBatch(batch);
     }
+    return true;
+    }else{
+      return false; 
+    }
+
   }
 
   Future<void> _syncBatch(List<Map<String, dynamic>> batch) async {
