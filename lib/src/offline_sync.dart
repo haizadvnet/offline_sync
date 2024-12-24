@@ -108,20 +108,13 @@ class OfflineSync {
     if(unsynced.isNotEmpty){
 
       for (final item in unsynced) {
-        final List<Map<String, dynamic>> batchData = [];
 
         final decryptedData =
           _encrypter.decrypt64(item['data'] as String, iv: _iv);
 
-        batchData.add({
-          'id': item['id'],
-          'action': item['action'],
-          'data': json.decode(decryptedData),
-        });
-
         //
         try {
-          final http.Response response = await _sendToServer('batch_sync', {'batch': batchData});
+          final http.Response response = await _sendToServer('batch_sync', json.decode(decryptedData));
 
           if(response.statusCode == 200){
             await _database.update(
