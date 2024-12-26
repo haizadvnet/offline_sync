@@ -11,7 +11,7 @@ class OfflineSync {
   static final OfflineSync _instance = OfflineSync._internal();
   factory OfflineSync() => _instance;
   OfflineSync._internal();
-
+  bool initialized = false;
   late Database _database;
   late SharedPreferences _sharedPreferences;
 
@@ -26,6 +26,10 @@ class OfflineSync {
   static const int _maxRetries = 3;
   static const int _batchSize = 50;
   static const int _currentSchemaVersion = 2;
+
+  bool isInitialized() {
+    return initialized;
+  }
 
   Future<void> initialize(encrypt.Encrypter encrypter,encrypt.IV iv,String apiEndpoint,String authToken) async {
 
@@ -62,6 +66,8 @@ class OfflineSync {
 
     await _sharedPreferences.setString(
         'auth_token', _encrypter.encrypt(authToken, iv: _iv).base64);
+
+    initialized = true;
   }
 
   Future<void> loadAuthToken() async {
