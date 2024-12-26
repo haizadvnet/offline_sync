@@ -5,7 +5,7 @@ import 'package:path/path.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:encrypt/encrypt.dart' as encrypt;
-import 'package:shared_preferences/shared_preferences.dart';
+// import 'package:shared_preferences/shared_preferences.dart';
 
 class OfflineSync {
   static final OfflineSync _instance = OfflineSync._internal();
@@ -13,12 +13,11 @@ class OfflineSync {
   OfflineSync._internal();
   bool initialized = false;
   late Database _database;
-  late SharedPreferences _sharedPreferences;
+  // late SharedPreferences _sharedPreferences;
 
   late encrypt.Encrypter _encrypter;
   late encrypt.IV _iv;
   late String _apiEndpoint;
-  late String _authToken;
 
   http.Client _httpClient = http.Client();
 
@@ -40,51 +39,53 @@ class OfflineSync {
     _encrypter = encrypter;
     _iv = iv;
     _apiEndpoint = apiEndpoint;
-    _authToken = authToken;
+    // _authToken = authToken;
 
     _database = await openDatabase(
       join(await getDatabasesPath(), 'offline_sync.db'),
       onCreate: (db, version) async {
         await db.execute(
-          'CREATE TABLE sync_queue(id INTEGER PRIMARY KEY, action TEXT, data TEXT, synced INTEGER, retry_count INTEGER, created_at INTEGER)',
+          'CREATE TABLE sync_queue(id INTEGER PRIMARY KEY, action TEXT, data TEXT, token TEXT, synced INTEGER, retry_count INTEGER, created_at INTEGER)',
         );
         await db.execute(
           'CREATE TABLE schema_version(version INTEGER PRIMARY KEY)',
         );
         await db.execute(
-          'CREATE TABLE local_data(id TEXT PRIMARY KEY, data TEXT, last_updated INTEGER)',
+          'CREATE TABLE local_data(id TEXT PRIMARY KEY, token TEXT, data TEXT, last_updated INTEGER)',
         );
         await db.insert('schema_version', {'version': _currentSchemaVersion});
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
-            'CREATE TABLE local_data(id TEXT PRIMARY KEY, data TEXT, last_updated INTEGER)',
+            'CREATE TABLE local_data(id TEXT PRIMARY KEY, token TEXT, data TEXT, last_updated INTEGER)',
           );
         }
       },
       version: _currentSchemaVersion,
     );
 
-    _sharedPreferences = await SharedPreferences.getInstance();
+    // _sharedPreferences = await SharedPreferences.getInstance();
 
-    await _sharedPreferences.setString(
-        'auth_token', _encrypter.encrypt(authToken, iv: _iv).base64);
+    // await _sharedPreferences.setString(
+    //     'auth_token', _encrypter.encrypt(authToken, iv: _iv).base64);
 
     initialized = true;
   }
 
-  Future<void> loadAuthToken() async {
-    final encryptedToken = _sharedPreferences.getString('auth_token');
-    if (encryptedToken != null) {
-      _authToken = _encrypter.decrypt64(encryptedToken, iv: _iv);
-    }
-  }
+  // Future<void> loadAuthToken() async {
+  //   final encryptedToken = _sharedPreferences.getString('auth_token');
+  //   if (encryptedToken != null) {
+  //     _authToken = _encrypter.decrypt64(encryptedToken, iv: _iv);
+  //   }
+  // }
 
-  Future<void> addToSyncQueue(String action, Map<String, dynamic> data) async {
+  Future<void> addToSyncQueue(String action, String token, Map<String, dynamic> data) async {
+    final encryptedToken = _encrypter.encrypt(json.encode(token), iv: _iv).base64;
     final encryptedData = _encrypter.encrypt(json.encode(data), iv: _iv).base64;
     await _database.insert('sync_queue', {
       'action': action,
+      'token': encryptedToken,
       'data': encryptedData,
       'synced': 0,
       'retry_count': 0,
@@ -122,9 +123,11 @@ class OfflineSync {
         final decryptedData =
           _encrypter.decrypt64(item['data'] as String, iv: _iv);
 
+        final decryptedToken =
+          _encrypter.decrypt64(item['token'] as String, iv: _iv);
         //
         try {
-          final http.Response response = await _sendToServer('batch_sync', json.decode(decryptedData)['data']);
+          final http.Response response = await _sendToServer('batch_sync', decryptedToken, json.decode(decryptedData)['data']);
 
           if(response.statusCode == 200){
             await _database.update(
@@ -205,7 +208,7 @@ class OfflineSync {
   }
 
   Future<http.Response> _sendToServer(
-      String action, Map<String, dynamic> data) async {
+      String action, String token,Map<String, dynamic> data) async {
     if (_apiEndpoint.isEmpty) {
       throw Exception('API endpoint not set');
     }
@@ -215,7 +218,7 @@ class OfflineSync {
       body: json.encode(data),
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $_authToken',
+        'Authorization': 'Bearer $token',
       },
     );
 
@@ -227,12 +230,14 @@ class OfflineSync {
     return response;
   }
 
-  Future<void> saveLocalData(String id, Map<String, dynamic> data) async {
+  Future<void> saveLocalData(String id, String token, Map<String, dynamic> data) async {
+    final encryptedToken = _encrypter.encrypt(json.encode(token), iv: _iv).base64;
     final encryptedData = _encrypter.encrypt(json.encode(data), iv: _iv).base64;
     await _database.insert(
       'local_data',
       {
         'id': id,
+        'token': encryptedToken,
         'data': encryptedData,
         'last_updated': DateTime.now().millisecondsSinceEpoch,
       },
@@ -240,7 +245,7 @@ class OfflineSync {
     );
 
     // Add to sync queue
-    await addToSyncQueue('update_data', {'id': id, 'data': data});
+    await addToSyncQueue('update_data', token,{'id': id, 'data': data});
   }
 
   Future<Map<String, dynamic>?> readLocalData(String id) async {
@@ -280,11 +285,11 @@ class OfflineSync {
   OfflineSync.withDependencies({
     required Database database,
     required http.Client httpClient,
-    required SharedPreferences sharedPreferences,
+    // required SharedPreferences sharedPreferences,
   }) {
     _database = database;
     _httpClient = httpClient;
-    _sharedPreferences = sharedPreferences;
+    // _sharedPreferences = sharedPreferences;
   }
 
   @visibleForTesting
