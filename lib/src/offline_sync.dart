@@ -73,15 +73,8 @@ class OfflineSync {
     initialized = true;
   }
 
-  // Future<void> loadAuthToken() async {
-  //   final encryptedToken = _sharedPreferences.getString('auth_token');
-  //   if (encryptedToken != null) {
-  //     _authToken = _encrypter.decrypt64(encryptedToken, iv: _iv);
-  //   }
-  // }
-
   Future<void> addToSyncQueue(String action, String token, Map<String, dynamic> data) async {
-    final encryptedToken = _encrypter.encrypt(json.encode(token), iv: _iv).base64;
+    final encryptedToken = _encrypter.encrypt(token, iv: _iv).base64;
     final encryptedData = _encrypter.encrypt(json.encode(data), iv: _iv).base64;
     await _database.insert('sync_queue', {
       'action': action,
@@ -231,7 +224,7 @@ class OfflineSync {
   }
 
   Future<void> saveLocalData(String id, String token, Map<String, dynamic> data) async {
-    final encryptedToken = _encrypter.encrypt(json.encode(token), iv: _iv).base64;
+    final encryptedToken = _encrypter.encrypt(token, iv: _iv).base64;
     final encryptedData = _encrypter.encrypt(json.encode(data), iv: _iv).base64;
     await _database.insert(
       'local_data',
