@@ -34,7 +34,7 @@ class OfflineSync {
     initialized = false;
   }
 
-  Future<void> initialize(encrypt.Encrypter encrypter,encrypt.IV iv,String apiEndpoint,String authToken) async {
+  Future<void> initialize(encrypt.Encrypter encrypter,encrypt.IV iv,String apiEndpoint) async {
 
     _encrypter = encrypter;
     _iv = iv;
