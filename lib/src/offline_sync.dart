@@ -122,7 +122,7 @@ class OfflineSync {
         try {
           final http.Response response = await _sendToServer('batch_sync', decryptedToken, json.decode(decryptedData)['data']);
 
-          if(response.statusCode == 200){
+          if(response.statusCode == 200 || response.statusCode == 409){
             await _database.update(
               'sync_queue',
               {'synced': 1},
